@@ -9,9 +9,11 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>  // for close
+#include "./analyze.h"
 
 #define BUFF_SIZE 1024
 #define THREAD_SIZE 1024
+#define PRINT_SIZE 256
 
 struct args {
   struct args* next;
@@ -45,18 +47,43 @@ void* handleRecv(void* args) {
   prevCastArgs = castArgs;
   castArgs = castArgs->next;
   free(prevCastArgs);
-  char* buff = (char*)castArgs->arg;
-  printf("thread - %s\n", buff);
+  uint8_t* buff = (uint8_t*)castArgs->arg;
+
+  // printf("thread - %s\n", buff);
+  printf("thread output:\n");
+  // int stringLength = strlen(buff);
+  // printf("String Length: %d\n", stringLength);
+  for (int i = 0; i < PRINT_SIZE; i++) {
+    if (buff[i] < 16)
+      printf("0");
+    printf("%x ", buff[i]);
+    // if (i % 2 == 1)
+    // printf(" ");
+    if (i % 32 == 31)
+      printf("\n");
+  }
+  printf("\n");
   // 处理
-  str2up(buff);
+  uint8_t* reply = analyzeRequest(buff);
+  for (int i = 0; i < PRINT_SIZE; i++) {
+    if (reply[i] < 10)
+      printf("0");
+    printf("%x ", reply[i]);
+    // if (i % 2 == 1)
+    // printf(" ");
+    if (i % 32 == 31)
+      printf("\n");
+  }
+  printf("\n");
   int send_len = 0;
-  send_len = sendto(server_sockfd, buff, strlen(buff) + 1, 0,
+  send_len = sendto(server_sockfd, (char*)reply, 128, 0,
                     (struct sockaddr*)clientAddr, *clientAddrLen);
   if (-1 == send_len) {
     perror("sendto");
     exit(errno);
   }
   free(buff);
+  free(reply);
   free(clientAddr);
   free(clientAddrLen);
   return NULL;
@@ -79,7 +106,7 @@ int main(void) {
   server_addr.sin_family =
       AF_INET;  // 地址的域， 相当于地址的类型， AF_UNIX表示地址位于UNIX系统内部
   server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(8888);
+  server_addr.sin_port = htons(53);
 
   // 绑定该套接字，使得该套接字和对应的系统套接字文件关联起来
   ret =
@@ -94,7 +121,7 @@ int main(void) {
     printf("server waiting\n");
 
     char* buff = malloc(sizeof(char) * BUFF_SIZE);
-    recv_len = recvfrom(server_sockfd, buff, sizeof(buff), 0,
+    recv_len = recvfrom(server_sockfd, buff, 1024 * sizeof(char), 0,
                         (struct sockaddr*)&client_addr, &client_addr_len);
     if (recv_len < 0) {
       perror("recvfrom");
@@ -122,9 +149,6 @@ int main(void) {
       pthread_join(threadID[countThread], (void**)0);
     }
     pthread_create(&threadID[countThread], NULL, handleRecv, (void*)argCliAddr);
-    printf("received: %s\n", buff);
-
-    // str2up(buff);
   }
 
   close(server_sockfd);

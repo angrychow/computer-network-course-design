@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "dns.h": "c",
+    "inet.h": "c"
+  }
+}
