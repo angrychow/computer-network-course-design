@@ -1,4 +1,10 @@
-#include "./dns.h"
+#include "dns.h"
+#include "shared_resource.h"
+#include "relay.h"
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdlib.h>
+
 
 void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
   header->ID = ID;         // from Query
@@ -11,11 +17,10 @@ void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
   header->RecursionAvailable = 1;
   header->Zero = 0;
   header->ResponseCode = 0;  // 没有错误
-  // 避免大小端，直接操纵字节
-  header->QDCOUNT_HIGH = 0;
-  header->QDCOUNT_LOW = 1;
-  header->ANCOUNT_HIGH = 0;
-  header->ANCOUNT_LOW = 1;
+  uint16_t local_qdcount = 0x0001;
+  uint16_t local_ancount = 0x0001;
+  header->QDCOUNT = htons(local_qdcount);
+  header->ANCOUNT = htons(local_ancount);
   header->NSCOUNT = 0;
   header->ARCOUNT = 0;
   printf("\n");
@@ -26,84 +31,121 @@ void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
   printf("\n above is header");
 }
 
-uint8_t* analyzeRequest(uint8_t* buf) {
-  uint16_t ID = *(uint16_t*)buf;
+uint8_t *analyzeRequest(uint8_t *buf) {
+
+  uint8_t isRelay = 0;
+  
+  uint16_t ID = *(uint16_t *)buf;
+  // 请求头
+  struct DNS_HEADER* requestHeader = (struct DNS_HEADER*) buf;
   printf("ID:%x\n", ID);
-  uint8_t* ret = malloc(1024 * sizeof(uint8_t));
+  uint8_t *ret = malloc(1024 * sizeof(uint8_t));
   // 保存指针的起点
-  uint8_t* originRet = ret;
+  uint8_t *originRet = ret;
+  // 请求类型
   uint16_t queryType;
   uint16_t queryClass;
+  uint16_t questionNumber = ntohs(requestHeader->QDCOUNT);
+  uint8_t *urlString = malloc(128);
+  uint8_t *urlReq = urlString;
   // 设置回复头部
   struct DNS_HEADER* respHeader = (struct DNS_HEADER*)ret;
   setReplyHeader(respHeader, ID);
   uint8_t urlSet[64][64] = {'\0'};
   int urlCnt = 0;
-  printf("sizeof DNS_HEADER:%d\n", sizeof(struct DNS_HEADER));
+  printf("\nsizeof DNS_HEADER:%ld\n", sizeof(struct DNS_HEADER));
   // 偏移到 question 部
   uint8_t* reqQustion = buf + LEN_DNS_HEADER;
   ret += LEN_DNS_HEADER;
-  // 遍历 url
+
+  
+  // 遍历 url，url 采用字节计数法
   while (1) {
     *ret = *reqQustion;
-    int count = *reqQustion;
+    uint8_t count = *reqQustion;
+    *urlString = (char)(*reqQustion + '0');
     ret++;
     reqQustion++;
+    urlString++;
     if (count == 0) {
       break;
     }
     for (int i = 0; i < count; i++) {
+      
       *ret = *reqQustion;
+      *urlString = *reqQustion;
       urlSet[urlCnt][i] = *reqQustion;
       ret++;
+      urlString++;
       reqQustion++;
     }
     urlCnt++;
   }
+  *urlString = '\0';
+
   // 设置 query Type && query Class
-  uint16_t* reqQuestionCast = (uint16_t*)reqQustion;
-  uint16_t* retCast = (uint16_t*)ret;
-  queryType = *reqQuestionCast;
-  *retCast = queryType;
-  printf("queryType:%d\n",queryType);
-  reqQuestionCast++;retCast++;
-  queryClass = *reqQuestionCast;
-  *retCast = queryClass;
-  reqQustion += 4;ret += 4;
-  for (int i = 1; i <= urlCnt; i++)
-    printf("%s\n", urlSet[i - 1]);
+
+  struct QUERY_ANS *reqQuestionHeader = (struct QUERY_ANS *)reqQustion;
+  struct QUERY_ANS *respQuestionHeader = (struct QUERY_ANS *)ret;
+  
+  // uint16_t* reqQuestionCast = (uint16_t*)reqQustion;
+  // uint16_t* retCast = (uint16_t*)ret;
+  respQuestionHeader->QUERY_TYPE = reqQuestionHeader->QUERY_TYPE;
+  respQuestionHeader->QUERY_CLASS = reqQuestionHeader->QUERY_CLASS;
+  printf("queryType:%d\n",reqQuestionHeader->QUERY_TYPE);
+
+  reqQustion += sizeof(struct QUERY_ANS);
+  ret += sizeof(struct QUERY_ANS);
+  
   // 设置 Answer，TODO：从 HOST 抽取 / 114.114.114.114 转发
 
-  // offset
-  *ret = 0xc0;ret ++;
-  *ret = 0x0c;ret ++;
+  // offset，本地应答时，省略 url，使用偏移指针指向
+  uint16_t offset_ptr_val = 0xc00c;
+  uint16_t *offset_ptr = (uint16_t *)ret;
+  *offset_ptr = htons(offset_ptr_val);
+  ret += sizeof(uint16_t);
 
   // Type
-  uint16_t* retCastAgain = (uint16_t*)ret;
-  *retCastAgain = queryType;
-  ret+=2;
-  // Protocol
-  *ret=0x00;ret++;
-  *ret=0x01;ret++;
+  uint16_t* query_type = (uint16_t*)ret;
+  *query_type = reqQuestionHeader->QUERY_TYPE;
+  ret+=sizeof(uint16_t);
+  // Class
+  uint16_t* query_class = (uint16_t*)ret;
+  *query_class = reqQuestionHeader->QUERY_CLASS;
+  ret+=sizeof(uint16_t);
   // TTL
-  *ret=0x00;ret++;
-  *ret=0x00;ret++;
-  *ret=0x02;ret++;
-  *ret=0x58;ret++;
+  uint32_t *resp_ttl = (uint32_t *)ret;
+  *resp_ttl = htonl(TTL);
+  ret+=sizeof(uint32_t);
 
   // Addr. Length
-  *ret = 0x00;ret++;
-  if(queryType==7168) {
-    *ret = 0x06;ret++;//IPV6
+  if(reqQuestionHeader->QUERY_TYPE == QUERY_TYPE_A && checkUrl((char*)urlReq)) {
+    uint16_t *resp_length = (uint16_t *)ret;
+    *resp_length = htons(0x0004);
+    ret += sizeof(uint16_t);
+    // set address
+    uint32_t *ipv4 = (uint32_t *)ret;
+    *ipv4 = htonl(getUrl((char *)urlReq));
+    //ipv4 0.0.0.0，是 block ip，选择不回复
+    if (*ipv4 == 0) {
+      // respHeader->ANCOUNT = 0;
+      respHeader->ResponseCode = 3;
+    }
+    ret += sizeof(uint32_t);
   } else {
-    *ret = 0x04;ret++;//IPV4
+    isRelay = 1;
+  }
+
+  printf("%s\n", urlReq);
+
+  free(urlReq);
+  if (isRelay) {
+    free(originRet);
+    return relayDNSPacket(buf, buf);
+  }
+
+  else {
+    return originRet;
   }
   
-
-  // Addr.
-  *ret = 0x7f;ret++;
-  *ret = 0x00;ret++;
-  *ret = 0x00;ret++;
-  *ret = 0x01;
-  return originRet;
 }

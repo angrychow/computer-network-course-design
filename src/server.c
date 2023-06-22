@@ -5,32 +5,33 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>  // for close
-#include "./analyze.h"
+#include "analyze.h"
+#include "shared_resource.h"
+#include "server.h"
+
+char *relayServerIP;
+char *blocklistUrl;
+
 
 #define BUFF_SIZE 1024
 #define THREAD_SIZE 1024
 #define PRINT_SIZE 256
 
+
+
+char *getRelayServerIP() { return relayServerIP; }
+
+char *getBlockList() { return blocklistUrl; }
+
 struct args {
   struct args* next;
   void* arg;
 };
-
-// 英文小写转换成大写
-static void str2up(char* str) {
-  while (*str) {
-    if (*str >= 'a' && *str <= 'z') {
-      *str = *str - 'a' + 'A';
-    }
-
-    str++;
-  }
-}
-
 int server_sockfd;
 pthread_t threadID[THREAD_SIZE] = {0};
 int countThread = 0;
@@ -49,34 +50,43 @@ void* handleRecv(void* args) {
   free(prevCastArgs);
   uint8_t* buff = (uint8_t*)castArgs->arg;
 
-  // printf("thread - %s\n", buff);
-  printf("thread output:\n");
-  // int stringLength = strlen(buff);
-  // printf("String Length: %d\n", stringLength);
-  for (int i = 0; i < PRINT_SIZE; i++) {
-    if (buff[i] < 16)
-      printf("0");
-    printf("%x ", buff[i]);
-    // if (i % 2 == 1)
-    // printf(" ");
-    if (i % 32 == 31)
-      printf("\n");
-  }
-  printf("\n");
+  // 输出读信的字节流
+  // printf("thread output:\n");
+  // for (int i = 0; i < PRINT_SIZE; i++) {
+  //   if (buff[i] < 16)
+  //     printf("0");
+  //   printf("%x ", buff[i]);
+  //   // if (i % 2 == 1)
+  //   // printf(" ");
+  //   if (i % 32 == 31)
+  //     printf("\n");
+  // }
+  // printf("\n");
   // 处理
-  uint8_t* reply = analyzeRequest(buff);
-  for (int i = 0; i < PRINT_SIZE; i++) {
-    if (reply[i] < 10)
-      printf("0");
-    printf("%x ", reply[i]);
-    // if (i % 2 == 1)
-    // printf(" ");
-    if (i % 32 == 31)
-      printf("\n");
-  }
-  printf("\n");
+  uint8_t *reply = analyzeRequest(buff);
+  // 输出 reply
+  // for (int i = 0; i < PRINT_SIZE; i++) {
+  //   if (reply[i] < 10)
+  //     printf("0");
+  //   printf("%x ", reply[i]);
+  //   // if (i % 2 == 1)
+  //   // printf(" ");
+  //   if (i % 32 == 31)
+  //     printf("\n");
+  // }
+  // printf("\n");
   int send_len = 0;
-  send_len = sendto(server_sockfd, (char*)reply, 128, 0,
+  // 送信
+  int byteCount = 0;
+  int zeroCount = 0;
+  for (int i = 0; i < 1024; i++) {
+    byteCount++;
+    if (reply[i] == '\0')
+      zeroCount++;
+    else zeroCount = 0;
+    if(zeroCount >=10)break;
+  }
+  send_len = sendto(server_sockfd, (char*)reply, byteCount, 0,
                     (struct sockaddr*)clientAddr, *clientAddrLen);
   if (-1 == send_len) {
     perror("sendto");
@@ -89,7 +99,30 @@ void* handleRecv(void* args) {
   return NULL;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+
+  relayServerIP = malloc(128);
+  blocklistUrl = malloc(128);
+  
+  strcpy(relayServerIP, "114.114.114.114");
+  strcpy(blocklistUrl, "./blocklist.txt");
+
+  // printf("%s\n",relayServerIP);
+  
+  for (int i = 0; i < argc; i++) {
+    if (strcmp("-r", argv[i]) == 0) {
+      // relayServerIP = argv[i+1];
+      strcpy(relayServerIP, argv[i+1]);
+    }
+    if (strcmp("-b", argv[i]) == 0) {
+      // blocklistUrl = argv[i+1];
+      strcpy(blocklistUrl, argv[i+1]);
+    }
+  }
+
+  // 初始化共享资源表
+  initSharedResource();
+
   int ret = 0;
   int recv_len = 0;
 
@@ -118,11 +151,12 @@ int main(void) {
 
   // 循环处理客户端请求
   while (1) {
+    // sleep(1);
     printf("server waiting\n");
 
     char* buff = malloc(sizeof(char) * BUFF_SIZE);
     recv_len = recvfrom(server_sockfd, buff, 1024 * sizeof(char), 0,
-                        (struct sockaddr*)&client_addr, &client_addr_len);
+                        (struct sockaddr*)&client_addr, (socklen_t*)(&client_addr_len));
     if (recv_len < 0) {
       perror("recvfrom");
       exit(errno);
