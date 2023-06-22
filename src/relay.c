@@ -65,21 +65,33 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
 
   // 修改表头
   reqHeader->ID = relayID;
+
+  // 设置超时时间 1s
+
+  struct timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+    perror("Error");
+    pthread_exit(NULL);
+  }
+
   
   // 向服务器发送数据
   ret = sendto(sockfd, message, 1024, 0,
                (struct sockaddr*)&server_addr, sizeof(server_addr));
   if (-1 == ret) {
     perror("sendto");
-    exit(errno);
+    pthread_exit(NULL);
   }
 
   printf("send %d bytes\n", ret);
 
   // 接收服务器发送的数据
   ret = recv(sockfd, buff, 1024, 0);
-  // 没得到数据，直接让线程挂掉，服务端超时，会进行第二次 dns probe
+  // 没得到数据（超时也返回 -1 ），直接让线程挂掉，服务端超时，会进行第二次 dns probe
   if (-1 == ret) {
+    printf("Maybe Timeout!");
     perror("recvfrom");
     pthread_exit(NULL);
   }

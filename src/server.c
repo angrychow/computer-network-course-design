@@ -19,7 +19,7 @@ char *blocklistUrl;
 
 
 #define BUFF_SIZE 1024
-#define THREAD_SIZE 1024
+#define THREAD_SIZE 8
 #define PRINT_SIZE 256
 
 
