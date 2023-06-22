@@ -66,7 +66,7 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
   // 修改表头
   reqHeader->ID = relayID;
 
-  // 设置超时时间 1s
+  // 设置 recv 超时时间 1s
 
   struct timeval tv;
   tv.tv_sec = 1;
@@ -91,8 +91,8 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
   ret = recv(sockfd, buff, 1024, 0);
   // 没得到数据（超时也返回 -1 ），直接让线程挂掉，服务端超时，会进行第二次 dns probe
   if (-1 == ret) {
-    printf("Maybe Timeout!");
-    perror("recvfrom");
+    printf("Timeout or UDP Failed. Thread %ld exit.", pthread_self());
+    perror("recv");
     pthread_exit(NULL);
   }
   printf("received %d bytes\n", ret);

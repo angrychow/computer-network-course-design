@@ -18,8 +18,8 @@
 #define IP_PORT 53
 #define IP_ADDR "192.168.0.1"
 #define TTL 0x00000300
-#define QUERY_TYPE_AAAA 7168
-#define QUERY_TYPE_A 256
+#define QUERY_TYPE_AAAA 28
+#define QUERY_TYPE_A 1
 // #pragma pack(push, 1)
 struct DNS_HEADER {
   // unsigned char id1;          // 会话id
@@ -35,12 +35,7 @@ struct DNS_HEADER {
   uint8_t ResponseCode : 4;
   uint8_t Zero : 3;
   uint8_t RecursionAvailable : 1;
-  // 避免大小端
-  // uint8_t QDCOUNT_HIGH;
-  // uint8_t QDCOUNT_LOW;
   uint16_t QDCOUNT;
-  // uint8_t ANCOUNT_HIGH;
-  // uint8_t ANCOUNT_LOW;
   uint16_t ANCOUNT;
   uint16_t NSCOUNT;
   uint16_t ARCOUNT;
