@@ -82,9 +82,7 @@ pthread_mutex_t* getRWLock() { return &id_tabel_lock; }
 uint8_t *getIdTable() { return idTable; }
 
 uint8_t checkUrl(char *url) {
-  printf("check\n\n\n\n");
   for (int i = 0; i < urlTableNumber; i++) {
-    printf("%s\n%s\n",url,urlTable[i].domainName);
     if (!strcmp(url, urlTable[i].domainName)) {
       return 1;
     }

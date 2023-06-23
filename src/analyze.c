@@ -9,7 +9,6 @@
 void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
   header->ID = ID;         // from Query
   header->QueryReply = 1;  // 指定为回复
-  // printf("%x\n", &(header->QueryReply) - header);
   header->OPCode = 0;
   header->AuthoritativeRequest = 0;
   header->Truncate = 0;
@@ -23,12 +22,11 @@ void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
   header->ANCOUNT = htons(local_ancount);
   header->NSCOUNT = 0;
   header->ARCOUNT = 0;
-  printf("\n");
   uint8_t* cast = (uint8_t*)header;
   for (int i = 0; i < 12; i++) {
     printf("%x ", cast[i]);
   }
-  printf("\n above is header");
+  printf("\n above is header \n");
 }
 
 uint8_t *analyzeRequest(uint8_t *buf) {
@@ -38,7 +36,7 @@ uint8_t *analyzeRequest(uint8_t *buf) {
   uint16_t ID = *(uint16_t *)buf;
   // 请求头
   struct DNS_HEADER* requestHeader = (struct DNS_HEADER*) buf;
-  printf("ID:%x\n", ID);
+  printf("Request ID:%x\n", ID);
   uint8_t *ret = malloc(1024 * sizeof(uint8_t));
   // 保存指针的起点
   uint8_t *originRet = ret;
@@ -92,7 +90,7 @@ uint8_t *analyzeRequest(uint8_t *buf) {
   // uint16_t* retCast = (uint16_t*)ret;
   respQuestionHeader->QUERY_TYPE = reqQuestionHeader->QUERY_TYPE;
   respQuestionHeader->QUERY_CLASS = reqQuestionHeader->QUERY_CLASS;
-  printf("queryType:%d\n",reqQuestionHeader->QUERY_TYPE);
+  printf("query type number:%d\n",ntohs(reqQuestionHeader->QUERY_TYPE));
 
   reqQustion += sizeof(struct QUERY_ANS);
   ret += sizeof(struct QUERY_ANS);
@@ -119,7 +117,7 @@ uint8_t *analyzeRequest(uint8_t *buf) {
   ret+=sizeof(uint32_t);
 
   // Addr. Length
-  if(reqQuestionHeader->QUERY_TYPE == QUERY_TYPE_A && checkUrl((char*)urlReq)) {
+  if(ntohs(reqQuestionHeader->QUERY_TYPE) == QUERY_TYPE_A && checkUrl((char*)urlReq)) {
     uint16_t *resp_length = (uint16_t *)ret;
     *resp_length = htons(0x0004);
     ret += sizeof(uint16_t);
@@ -136,7 +134,7 @@ uint8_t *analyzeRequest(uint8_t *buf) {
     isRelay = 1;
   }
 
-  printf("%s\n", urlReq);
+  printf("request url:%s\n", urlReq);
 
   free(urlReq);
   if (isRelay) {

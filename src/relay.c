@@ -85,7 +85,7 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
     pthread_exit(NULL);
   }
 
-  printf("send %d bytes\n", ret);
+  printf("send %d bytes to isp dns server \n", ret);
 
   // 接收服务器发送的数据
   ret = recv(sockfd, buff, 1024, 0);
@@ -95,7 +95,7 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
     perror("recv");
     pthread_exit(NULL);
   }
-  printf("received %d bytes\n", ret);
+  printf("received %d bytes from isp dns server\n", ret);
 
   // 获取锁，将原本的 id 号归还，修改 resp id
   pthread_mutex_lock(getRWLock());

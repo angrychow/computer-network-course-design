@@ -36,7 +36,9 @@ int server_sockfd;
 pthread_t threadID[THREAD_SIZE] = {0};
 int countThread = 0;
 
-void* handleRecv(void* args) {
+void *handleRecv(void *args) {
+  printf("thread %ld start\n",pthread_self());
+  
   struct args* castArgs = (struct args*)args;
   struct sockaddr_in* clientAddr = (struct sockaddr_in*)castArgs->arg;
   // 释放 1
