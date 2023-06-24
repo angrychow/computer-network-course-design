@@ -6,6 +6,7 @@
 #include <string.h>
 #include "shared_resource.h"
 #include "server.h"
+#include "trie.h"
 
 pthread_mutex_t id_tabel_lock;
 
@@ -70,6 +71,7 @@ void initSharedResource() {
     }
     urlTable[urlTableNumber].domainName = tmp;
     urlTable[urlTableNumber++].ipv4 = trueIpv4;
+    trie_insert(tmp, trueIpv4);
     printf("%ud %s\n", trueIpv4, tmp);
   }
 
@@ -82,19 +84,25 @@ pthread_mutex_t* getRWLock() { return &id_tabel_lock; }
 uint8_t *getIdTable() { return idTable; }
 
 uint8_t checkUrl(char *url) {
-  for (int i = 0; i < urlTableNumber; i++) {
-    if (!strcmp(url, urlTable[i].domainName)) {
-      return 1;
-    }
-  }
-  return 0;
+  // for (int i = 0; i < urlTableNumber; i++) {
+  //   if (!strcmp(url, urlTable[i].domainName)) {
+  //     return 1;
+  //   }
+  // }
+  // return 0;
+  uint32_t ret = trie_search(url);
+  if(ret == UINT32_MAX)
+    return 0;
+  else
+    return 1;
 }
 
 uint32_t getUrl(char *url) {
-  for (int i = 0; i < urlTableNumber; i++) {
-    if (!strcmp(url, urlTable[i].domainName)) {
-      return urlTable[i].ipv4;
-    }
-  }
-  return 0;
+  // for (int i = 0; i < urlTableNumber; i++) {
+  //   if (!strcmp(url, urlTable[i].domainName)) {
+  //     return urlTable[i].ipv4;
+  //   }
+  // }
+  // return 0;
+  return trie_search(url);
 }
