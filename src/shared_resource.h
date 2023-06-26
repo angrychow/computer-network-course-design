@@ -15,7 +15,7 @@ void initSharedResource();
 
 uint8_t checkUrl(char *url);
 
-uint32_t getUrl(char *url);
+int getUrl(char *url);
 
 char *getBlockList();
 
