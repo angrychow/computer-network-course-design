@@ -90,14 +90,14 @@ uint8_t checkUrl(char *url) {
   //   }
   // }
   // return 0;
-  uint32_t ret = trie_search(url);
-  if(ret == UINT32_MAX)
+  int ret = trie_search(url);
+  if(ret == 0)
     return 0;
   else
     return 1;
 }
 
-uint32_t getUrl(char *url) {
+int getUrl(char *url) {
   // for (int i = 0; i < urlTableNumber; i++) {
   //   if (!strcmp(url, urlTable[i].domainName)) {
   //     return urlTable[i].ipv4;
