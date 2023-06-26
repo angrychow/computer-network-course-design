@@ -10,6 +10,9 @@
 void cache_store(uint8_t * buff, char * domainName, int qname_length) {
   uint8_t * tmp = (buff + LEN_DNS_HEADER + qname_length + LEN_DNS_QUESTION);
   uint32_t * ipv4;
+  struct DNS_HEADER * header = (struct DNS_HEADER *) buff;
+  uint16_t ANCOUNT = header -> ANCOUNT;
+  int cnt = 0;
   while(1) {//跳过TYPE为CNAME的ANSWER，取得第一个TYPE为A的ANSWER的RDATA字段
     uint8_t * name = tmp;
     int name_length = 0;
@@ -24,17 +27,16 @@ void cache_store(uint8_t * buff, char * domainName, int qname_length) {
     }
 
     uint16_t * TYPE = (uint16_t * )(tmp + name_length);
-    if(ntohs(*TYPE) == 5) {//回答为CNAME
-      uint16_t * rd_length = (uint16_t *)(tmp + name_length + 8);
-      tmp = (tmp + name_length + 10 + ntohs(*rd_length));
-    }
-    else {//回答为A
+    uint16_t * rd_length = (uint16_t *)(tmp + name_length + 8);
+    if(ntohs(*TYPE) == 1) {//回答为A
       ipv4 = (uint32_t *)(tmp + name_length + 10);
-      break;
+      trie_insert(domainName, ntohl(*ipv4));
     }
+    tmp = (tmp + name_length + 10 + ntohs(*rd_length));
+    cnt ++;
+    if(cnt == ANCOUNT) break;
   }
 
-  trie_insert(domainName, ntohl(*ipv4));
 }
 
 void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
@@ -128,43 +130,58 @@ uint8_t *analyzeRequest(uint8_t *buf) {
   reqQustion += sizeof(struct QUERY_ANS);
   ret += sizeof(struct QUERY_ANS);
   
-  // 设置 Answer，TODO：从 HOST 抽取 / 114.114.114.114 转发
-
-  // offset，本地应答时，省略 url，使用偏移指针指向
-  uint16_t offset_ptr_val = 0xc00c;
-  uint16_t *offset_ptr = (uint16_t *)ret;
-  *offset_ptr = htons(offset_ptr_val);
-  ret += sizeof(uint16_t);
-
-  // Type
-  uint16_t* query_type = (uint16_t*)ret;
-  *query_type = reqQuestionHeader->QUERY_TYPE;
-  ret+=sizeof(uint16_t);
-  // Class
-  uint16_t* query_class = (uint16_t*)ret;
-  *query_class = reqQuestionHeader->QUERY_CLASS;
-  ret+=sizeof(uint16_t);
-  // TTL
-  uint32_t *resp_ttl = (uint32_t *)ret;
-  *resp_ttl = htonl(TTL);
-  ret+=sizeof(uint32_t);
-
   int ipv4 = 1;
   // Addr. Length
   if(ntohs(reqQuestionHeader->QUERY_TYPE) == QUERY_TYPE_A && checkUrl((char*)urlReq)) {
-    // printf("WEWEDSDSDSDASDASD\n");
-    uint16_t *resp_length = (uint16_t *)ret;
-    *resp_length = htons(0x0004);
-    ret += sizeof(uint16_t);
-    // set address
-    uint32_t *ipv4 = (uint32_t *)ret;
-    *ipv4 = htonl(getUrl((char *)urlReq));
-    //ipv4 0.0.0.0，是 block ip，选择不回复
-    if (*ipv4 == 0) {
-      // respHeader->ANCOUNT = 0;
-      respHeader->ResponseCode = 3;
+    // uint16_t *resp_length = (uint16_t *)ret;
+    // *resp_length = htons(0x0004);
+    // ret += sizeof(uint16_t);
+    // // set address
+    // uint32_t *ipv4 = (uint32_t *)ret;
+    // *ipv4 = htonl(getUrl((char *)urlReq));
+    // //ipv4 0.0.0.0，是 block ip，选择不回复
+    // if (*ipv4 == 0) {
+    //   // respHeader->ANCOUNT = 0;
+    //   respHeader->ResponseCode = 3;
+    // }
+    // ret += sizeof(uint32_t);
+    int id = getUrl((char*)urlReq);
+    respHeader ->ANCOUNT = htons(ipset[id].num);
+
+    for(int i = 1; i <= ipset[id].num; ++ i) {
+      uint16_t offset_ptr_val = 0xc00c;
+      uint16_t *offset_ptr = (uint16_t *)ret;
+      *offset_ptr = htons(offset_ptr_val);
+      ret += sizeof(uint16_t);
+
+      struct QUERY_ANS * question = (struct QUERY_ANS *)(buf + LEN_DNS_HEADER + url_length);
+      // Type
+      uint16_t* query_type = (uint16_t*)ret;
+      *query_type = question->QUERY_TYPE;
+      ret+=sizeof(uint16_t);
+      // Class
+      uint16_t* query_class = (uint16_t*)ret;
+      *query_class = question->QUERY_CLASS;
+      ret+=sizeof(uint16_t);
+      // TTL
+      uint32_t *resp_ttl = (uint32_t *)ret;
+      *resp_ttl = htonl(TTL);
+      ret+=sizeof(uint32_t);
+
+      // RDLENGTH
+      uint16_t * rdlength = (uint16_t *)ret;
+      *rdlength = htons(0x4);
+      ret+=sizeof(uint16_t);
+
+      if(ipset[id].ip[i] == 0) {
+        respHeader ->ResponseCode = 3;
+      }
+      uint32_t * rdata = (uint32_t * )ret;
+      *rdata = htonl(ipset[id].ip[i]);
+      ret+=sizeof(uint32_t);
     }
-    ret += sizeof(uint32_t);
+
+
   } else {
     if(ntohs(reqQuestionHeader->QUERY_TYPE) != QUERY_TYPE_A)
       ipv4 = 0;
