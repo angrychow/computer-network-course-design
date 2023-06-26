@@ -1,14 +1,45 @@
 #include "dns.h"
 #include "shared_resource.h"
 #include "relay.h"
+#include "trie.h"
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+//根据114.114.114.114发过来的报文进行本地存储
+void cache_store(uint8_t * buff, char * domainName, int qname_length) {
+  uint8_t * tmp = (buff + LEN_DNS_HEADER + qname_length + LEN_DNS_QUESTION);
+  uint32_t * ipv4;
+  while(1) {//跳过TYPE为CNAME的ANSWER，取得第一个TYPE为A的ANSWER的RDATA字段
+    uint8_t * name = tmp;
+    int name_length = 0;
+    while(1) {
+      name_length ++;
+      if(*name == 0) break;
+      if(*name == 0xc0) {
+        name_length ++;
+        break;
+      }
+      name ++;
+    }
+
+    uint16_t * TYPE = (uint16_t * )(tmp + name_length);
+    if(ntohs(*TYPE) == 5) {//回答为CNAME
+      uint16_t * rd_length = (uint16_t *)(tmp + name_length + 8);
+      tmp = (tmp + name_length + 10 + ntohs(*rd_length));
+    }
+    else {//回答为A
+      ipv4 = (uint32_t *)(tmp + name_length + 10);
+      break;
+    }
+  }
+
+  trie_insert(domainName, ntohl(*ipv4));
+}
 
 void setReplyHeader(struct DNS_HEADER* header, uint16_t ID) {
   header->ID = ID;         // from Query
-  header->QueryReply = 1;  // 指定为回复
+  header->QueryReply = 1; // 指定为回复
   header->OPCode = 0;
   header->AuthoritativeRequest = 0;
   header->Truncate = 0;
@@ -56,7 +87,7 @@ uint8_t *analyzeRequest(uint8_t *buf) {
   uint8_t* reqQustion = buf + LEN_DNS_HEADER;
   ret += LEN_DNS_HEADER;
 
-  
+  int url_length = 0;
   // 遍历 url，url 采用字节计数法
   while (1) {
     *ret = *reqQustion;
@@ -65,6 +96,7 @@ uint8_t *analyzeRequest(uint8_t *buf) {
     ret++;
     reqQustion++;
     urlString++;
+    url_length++;
     if (count == 0) {
       break;
     }
@@ -76,10 +108,11 @@ uint8_t *analyzeRequest(uint8_t *buf) {
       ret++;
       urlString++;
       reqQustion++;
+      url_length++;
     }
     urlCnt++;
   }
-  *urlString = '\0';
+  *urlString = '\0';//这个urlString字符串的最后面会有一个字符0
 
   // 设置 query Type && query Class
 
@@ -116,8 +149,10 @@ uint8_t *analyzeRequest(uint8_t *buf) {
   *resp_ttl = htonl(TTL);
   ret+=sizeof(uint32_t);
 
+  int ipv4 = 1;
   // Addr. Length
   if(ntohs(reqQuestionHeader->QUERY_TYPE) == QUERY_TYPE_A && checkUrl((char*)urlReq)) {
+    // printf("WEWEDSDSDSDASDASD\n");
     uint16_t *resp_length = (uint16_t *)ret;
     *resp_length = htons(0x0004);
     ret += sizeof(uint16_t);
@@ -131,18 +166,26 @@ uint8_t *analyzeRequest(uint8_t *buf) {
     }
     ret += sizeof(uint32_t);
   } else {
+    if(ntohs(reqQuestionHeader->QUERY_TYPE) != QUERY_TYPE_A)
+      ipv4 = 0;
     isRelay = 1;
   }
 
   printf("request url:%s\n", urlReq);
 
-  free(urlReq);
+  // free(urlReq);
   if (isRelay) {
     free(originRet);
-    return relayDNSPacket(buf, buf);
+    uint8_t * rec = relayDNSPacket(buf, buf);
+    if(ipv4 == 1)
+      cache_store(rec, (char *)urlReq, url_length);
+    free(urlReq);
+    return rec;
+    // return relayDNSPacket(buf, buf);
   }
 
   else {
+    free(urlReq);
     return originRet;
   }
   
