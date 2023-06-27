@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/time.h>
 #include <unistd.h> // for close
 
 #include "relay.h"
@@ -36,12 +37,19 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
   server_addr.sin_addr.s_addr = inet_addr(getRelayServerIP());
   server_addr.sin_port = htons(53);
 
+  // ret =
+  //     bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr));
+  // if (-1 == ret) {
+  //   perror("bind");
+  //   exit(1);
+  // }
+
 
   // ID 判重，注意到这里是 Critical Area 🤮
   uint8_t *message = packet;
   struct DNS_HEADER *reqHeader = (struct DNS_HEADER *)message;
   // 取出本地 ID
-  uint16_t localID = reqHeader->ID;
+  uint16_t localID = ntohs(reqHeader->ID);
   // 中继 ID
   uint16_t relayID;
 
@@ -64,7 +72,7 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
   pthread_mutex_unlock(getRWLock());
 
   // 修改表头
-  reqHeader->ID = relayID;
+  reqHeader->ID = htons(relayID);
 
   // 设置 recv 超时时间 1s
 
