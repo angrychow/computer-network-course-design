@@ -109,7 +109,7 @@ uint8_t* relayDNSPacket(uint8_t* packet, uint8_t* ip) {
   pthread_mutex_lock(getRWLock());
   (getIdTable())[relayID] = 0;
   struct DNS_HEADER *respHeader = (struct DNS_HEADER *)buff;
-  respHeader->ID = localID;
+  respHeader->ID = htons(localID);
   // 归还锁
   pthread_mutex_unlock(getRWLock());
   return buff;
